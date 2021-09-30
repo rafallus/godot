@@ -134,6 +134,7 @@ class GridMap : public Node3D {
 
 	uint32_t collision_layer = 1;
 	uint32_t collision_mask = 1;
+	bool ray_pickable = true;
 	bool bake_navigation = false;
 	uint32_t navigation_layers = 1;
 
@@ -174,6 +175,7 @@ class GridMap : public Node3D {
 	}
 
 	void _reset_physic_bodies_collision_filters();
+	void _reset_physic_bodies_ray_pickable();
 	void _octant_enter_world(const OctantKey &p_key);
 	void _octant_exit_world(const OctantKey &p_key);
 	bool _octant_update(const OctantKey &p_key);
@@ -222,6 +224,9 @@ public:
 
 	void set_collision_mask_value(int p_layer_number, bool p_value);
 	bool get_collision_mask_value(int p_layer_number) const;
+
+	void set_ray_pickable(bool p_ray_pickable);
+	bool is_ray_pickable() const;
 
 	void set_bake_navigation(bool p_bake_navigation);
 	bool is_baking_navigation();

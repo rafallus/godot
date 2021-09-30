@@ -187,6 +187,15 @@ bool GridMap::get_collision_mask_value(int p_layer_number) const {
 	return get_collision_mask() & (1 << (p_layer_number - 1));
 }
 
+void GridMap::set_ray_pickable(bool p_ray_pickable) {
+	ray_pickable = p_ray_pickable;
+	_reset_physic_bodies_ray_pickable();
+}
+
+bool GridMap::is_ray_pickable() const {
+	return ray_pickable;
+}
+
 void GridMap::set_bake_navigation(bool p_bake_navigation) {
 	bake_navigation = p_bake_navigation;
 	_recreate_octant_data();
@@ -316,6 +325,7 @@ void GridMap::set_cell_item(const Vector3i &p_position, int p_item, int p_rot) {
 		PhysicsServer3D::get_singleton()->body_attach_object_instance_id(g->static_body, get_instance_id());
 		PhysicsServer3D::get_singleton()->body_set_collision_layer(g->static_body, collision_layer);
 		PhysicsServer3D::get_singleton()->body_set_collision_mask(g->static_body, collision_mask);
+		PhysicsServer3D::get_singleton()->body_set_ray_pickable(g->static_body, ray_pickable);
 		SceneTree *st = SceneTree::get_singleton();
 
 		if (st && st->is_debugging_collisions_hint()) {
@@ -573,6 +583,12 @@ void GridMap::_reset_physic_bodies_collision_filters() {
 	}
 }
 
+void GridMap::_reset_physic_bodies_ray_pickable() {
+	for (Map<OctantKey, Octant *>::Element *E = octant_map.front(); E; E = E->next()) {
+		PhysicsServer3D::get_singleton()->body_set_ray_pickable(E->get()->static_body, ray_pickable);
+	}
+}
+
 void GridMap::_octant_enter_world(const OctantKey &p_key) {
 	ERR_FAIL_COND(!octant_map.has(p_key));
 	Octant &g = *octant_map[p_key];
@@ -801,6 +817,9 @@ void GridMap::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_collision_layer_value", "layer_number", "value"), &GridMap::set_collision_layer_value);
 	ClassDB::bind_method(D_METHOD("get_collision_layer_value", "layer_number"), &GridMap::get_collision_layer_value);
 
+	ClassDB::bind_method(D_METHOD("set_ray_pickable", "ray_pickable"), &GridMap::set_ray_pickable);
+	ClassDB::bind_method(D_METHOD("is_ray_pickable"), &GridMap::is_ray_pickable);
+
 	ClassDB::bind_method(D_METHOD("set_bake_navigation", "bake_navigation"), &GridMap::set_bake_navigation);
 	ClassDB::bind_method(D_METHOD("is_baking_navigation"), &GridMap::is_baking_navigation);
 
@@ -850,6 +869,7 @@ void GridMap::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("make_baked_meshes", "gen_lightmap_uv", "lightmap_uv_texel_size"), &GridMap::make_baked_meshes, DEFVAL(false), DEFVAL(0.1));
 
 	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "mesh_library", PROPERTY_HINT_RESOURCE_TYPE, "MeshLibrary"), "set_mesh_library", "get_mesh_library");
+	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "ray_pickable"), "set_ray_pickable", "is_ray_pickable");
 	ADD_GROUP("Cell", "cell_");
 	ADD_PROPERTY(PropertyInfo(Variant::VECTOR3, "cell_size"), "set_cell_size", "get_cell_size");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "cell_octant_size", PROPERTY_HINT_RANGE, "1,1024,1"), "set_octant_size", "get_octant_size");
