@@ -112,6 +112,7 @@ class GridMap : public Node3D {
 		bool dirty = false;
 		RID static_body;
 		Map<IndexKey, NavMesh> navmesh_ids;
+		Map<int, IndexKey> shapes_cell;
 	};
 
 	union OctantKey {
@@ -160,6 +161,8 @@ class GridMap : public Node3D {
 
 	Map<OctantKey, Octant *> octant_map;
 	Map<IndexKey, Cell> cell_map;
+	Map<IndexKey, RID> multimeshes;
+	Map<IndexKey, int> instance_indices;
 
 	void _recreate_octant_data();
 
@@ -273,6 +276,12 @@ public:
 
 	Array get_bake_meshes();
 	RID get_bake_mesh_instance(int p_idx);
+
+	RID get_cell_multimesh_instance(const Vector3i &p_position);
+
+	int get_cell_mesh_instance_index(const Vector3i &p_position);
+
+	Vector3i get_shape_cell(const RID &p_static_body, const int p_shape_idx);
 
 	GridMap();
 	~GridMap();

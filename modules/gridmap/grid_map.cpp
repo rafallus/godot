@@ -458,6 +458,7 @@ bool GridMap::_octant_update(const OctantKey &p_key) {
 	 */
 
 	Map<int, List<Pair<Transform3D, IndexKey>>> multimesh_items;
+	int shapeidx = 0;
 
 	for (Set<IndexKey>::Element *E = g.cells.front(); E; E = E->next()) {
 		ERR_CONTINUE(!cell_map.has(E->get()));
@@ -496,6 +497,8 @@ bool GridMap::_octant_update(const OctantKey &p_key) {
 				continue;
 			}
 			PhysicsServer3D::get_singleton()->body_add_shape(g.static_body, shapes[i].shape->get_rid(), xform * shapes[i].local_transform);
+			g.shapes_cell[shapeidx] = E->get();
+			shapeidx++;
 			if (g.collision_debug.is_valid()) {
 				shapes.write[i].shape->add_vertices_to_array(col_debug, xform * shapes[i].local_transform);
 			}
@@ -511,7 +514,8 @@ bool GridMap::_octant_update(const OctantKey &p_key) {
 				RID region = NavigationServer3D::get_singleton()->region_create();
 				NavigationServer3D::get_singleton()->region_set_layers(region, navigation_layers);
 				NavigationServer3D::get_singleton()->region_set_navmesh(region, navmesh);
-				NavigationServer3D::get_singleton()->region_set_transform(region, get_global_transform() * mesh_library->get_item_navmesh_transform(c.item));
+				//NavigationServer3D::get_singleton()->region_set_transform(region, get_global_transform() * mesh_library->get_item_navmesh_transform(c.item));
+				NavigationServer3D::get_singleton()->region_set_transform(region, get_global_transform() * xform);
 				NavigationServer3D::get_singleton()->region_set_map(region, get_world_3d()->get_navigation_map());
 				nm.region = region;
 			}
@@ -529,9 +533,14 @@ bool GridMap::_octant_update(const OctantKey &p_key) {
 			RS::get_singleton()->multimesh_allocate_data(mm, E.value.size(), RS::MULTIMESH_TRANSFORM_3D);
 			RS::get_singleton()->multimesh_set_mesh(mm, mesh_library->get_item_mesh(E.key)->get_rid());
 
+			RID instance = RS::get_singleton()->instance_create();
+			RS::get_singleton()->instance_set_base(instance, mm);
+
 			int idx = 0;
 			for (const Pair<Transform3D, IndexKey> &F : E.value) {
 				RS::get_singleton()->multimesh_instance_set_transform(mm, idx, F.first);
+				multimeshes[F.second] = instance;
+				instance_indices[F.second] = idx;
 #ifdef TOOLS_ENABLED
 
 				Octant::MultimeshInstance::Item it;
@@ -543,9 +552,6 @@ bool GridMap::_octant_update(const OctantKey &p_key) {
 
 				idx++;
 			}
-
-			RID instance = RS::get_singleton()->instance_create();
-			RS::get_singleton()->instance_set_base(instance, mm);
 
 			if (is_inside_tree()) {
 				RS::get_singleton()->instance_set_scenario(instance, get_world_3d()->get_scenario());
@@ -671,6 +677,7 @@ void GridMap::_octant_clean_up(const OctantKey &p_key) {
 		RS::get_singleton()->free(g.multimesh_instances[i].multimesh);
 	}
 	g.multimesh_instances.clear();
+	g.shapes_cell.clear();
 }
 
 void GridMap::_notification(int p_what) {
@@ -772,6 +779,8 @@ void GridMap::_clear_internal() {
 
 	octant_map.clear();
 	cell_map.clear();
+	multimeshes.clear();
+	instance_indices.clear();
 }
 
 void GridMap::clear() {
@@ -867,6 +876,10 @@ void GridMap::_bind_methods() {
 
 	ClassDB::bind_method(D_METHOD("clear_baked_meshes"), &GridMap::clear_baked_meshes);
 	ClassDB::bind_method(D_METHOD("make_baked_meshes", "gen_lightmap_uv", "lightmap_uv_texel_size"), &GridMap::make_baked_meshes, DEFVAL(false), DEFVAL(0.1));
+
+	ClassDB::bind_method(D_METHOD("get_cell_multimesh_instance"), &GridMap::get_cell_multimesh_instance);
+	ClassDB::bind_method(D_METHOD("get_cell_mesh_instance_index"), &GridMap::get_cell_mesh_instance_index);
+	ClassDB::bind_method(D_METHOD("get_shape_cell"), &GridMap::get_shape_cell);
 
 	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "mesh_library", PROPERTY_HINT_RESOURCE_TYPE, "MeshLibrary"), "set_mesh_library", "get_mesh_library");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "ray_pickable"), "set_ray_pickable", "is_ray_pickable");
@@ -1086,6 +1099,34 @@ Array GridMap::get_bake_meshes() {
 RID GridMap::get_bake_mesh_instance(int p_idx) {
 	ERR_FAIL_INDEX_V(p_idx, baked_meshes.size(), RID());
 	return baked_meshes[p_idx].instance;
+}
+
+RID GridMap::get_cell_multimesh_instance(const Vector3i &p_position) {
+	IndexKey key;
+	key.x = p_position.x;
+	key.y = p_position.y;
+	key.z = p_position.z;
+	return multimeshes[key];
+}
+
+int GridMap::get_cell_mesh_instance_index(const Vector3i &p_position) {
+	IndexKey key;
+	key.x = p_position.x;
+	key.y = p_position.y;
+	key.z = p_position.z;
+	return instance_indices[key];
+}
+
+Vector3i GridMap::get_shape_cell(const RID &p_static_body, const int p_shape_idx) {
+	for (KeyValue<OctantKey, Octant *> &e : octant_map) {
+		Octant *octant = e.value;
+		if (octant->static_body == p_static_body) {
+			IndexKey key = octant->shapes_cell[p_shape_idx];
+			Vector3i c = Vector3i(key.x, key.y, key.z);
+			return c;
+		}
+	}
+	return Vector3i(-10000,-10000,-10000);
 }
 
 GridMap::GridMap() {
