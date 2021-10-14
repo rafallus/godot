@@ -37,6 +37,7 @@
 #include "scene/3d/mesh_instance_3d.h"
 #include "scene/3d/navigation_region_3d.h"
 #include "scene/3d/physics_body_3d.h"
+#include "scene/3d/area_3d.h"
 #include "scene/main/window.h"
 #include "scene/resources/packed_scene.h"
 
@@ -120,40 +121,61 @@ void MeshLibraryEditor::_import_scene(Node *p_scene, Ref<MeshLibrary> p_library,
 		mesh_instances[id] = mi;
 
 		Vector<MeshLibrary::ShapeData> collisions;
+		Vector<MeshLibrary::ShapeData> areas;
 
 		for (int j = 0; j < mi->get_child_count(); j++) {
 			Node *child2 = mi->get_child(j);
-			if (!Object::cast_to<StaticBody3D>(child2)) {
-				continue;
-			}
+			if (Object::cast_to<StaticBody3D>(child2)) {
+				StaticBody3D *sb = Object::cast_to<StaticBody3D>(child2);
+				List<uint32_t> shapes;
+				sb->get_shape_owners(&shapes);
 
-			StaticBody3D *sb = Object::cast_to<StaticBody3D>(child2);
-			List<uint32_t> shapes;
-			sb->get_shape_owners(&shapes);
-
-			for (uint32_t &E : shapes) {
-				if (sb->is_shape_owner_disabled(E)) {
-					continue;
-				}
-
-				//Transform3D shape_transform = sb->shape_owner_get_transform(E);
-
-				//shape_transform.set_origin(shape_transform.get_origin() - phys_offset);
-
-				for (int k = 0; k < sb->shape_owner_get_shape_count(E); k++) {
-					Ref<Shape3D> collision = sb->shape_owner_get_shape(E, k);
-					if (!collision.is_valid()) {
+				for (uint32_t &E : shapes) {
+					if (sb->is_shape_owner_disabled(E)) {
 						continue;
 					}
-					MeshLibrary::ShapeData shape_data;
-					shape_data.shape = collision;
-					shape_data.local_transform = sb->get_transform() * sb->shape_owner_get_transform(E);
-					collisions.push_back(shape_data);
+
+					//Transform3D shape_transform = sb->shape_owner_get_transform(E);
+
+					//shape_transform.set_origin(shape_transform.get_origin() - phys_offset);
+
+					for (int k = 0; k < sb->shape_owner_get_shape_count(E); k++) {
+						Ref<Shape3D> collision = sb->shape_owner_get_shape(E, k);
+						if (!collision.is_valid()) {
+							continue;
+						}
+						MeshLibrary::ShapeData shape_data;
+						shape_data.shape = collision;
+						shape_data.local_transform = sb->get_transform() * sb->shape_owner_get_transform(E);
+						collisions.push_back(shape_data);
+					}
+				}
+			} else if (Object::cast_to<Area3D>(child2)) {
+				Area3D *area = Object::cast_to<Area3D>(child2);
+				List<uint32_t> shapes;
+				area->get_shape_owners(&shapes);
+
+				for (uint32_t &E : shapes) {
+					if (area->is_shape_owner_disabled(E)) {
+						continue;
+					}
+
+					for (int k = 0; k < area->shape_owner_get_shape_count(E); k++) {
+						Ref<Shape3D> area_shape = area->shape_owner_get_shape(E, k);
+						if (!area_shape.is_valid()) {
+							continue;
+						}
+						MeshLibrary::ShapeData shape_data;
+						shape_data.shape = area_shape;
+						shape_data.local_transform = area->get_transform() * area->shape_owner_get_transform(E);
+						areas.push_back(shape_data);
+					}
 				}
 			}
 		}
 
 		p_library->set_item_shapes(id, collisions);
+		p_library->set_item_areas(id, areas);
 
 		Ref<NavigationMesh> navmesh;
 		Transform3D navmesh_transform;

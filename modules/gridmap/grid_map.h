@@ -34,12 +34,29 @@
 #include "scene/3d/node_3d.h"
 #include "scene/resources/mesh_library.h"
 #include "scene/resources/multimesh.h"
+#include "scene/3d/collision_object_3d.h"
+
+class GridMap;
+
+class GridMapArea : public RefCounted {
+	GDCLASS(GridMapArea, RefCounted);
+
+public:
+	RID rid;
+	GridMap *owner = nullptr;
+	void status_notification(PhysicsServer3D::AreaBodyStatus p_status, RID p_other, ObjectID p_other_id, uint32_t p_other_shape, uint32_t p_shape);
+
+protected:
+	static void _bind_methods();
+};
 
 //heh heh, godotsphir!! this shares no code and the design is completely different with previous projects i've done..
 //should scale better with hardware that supports instancing
 
 class GridMap : public Node3D {
 	GDCLASS(GridMap, Node3D);
+
+	friend class GridMapArea;
 
 	enum {
 		MAP_DIRTY_TRANSFORMS = 1,
@@ -108,11 +125,16 @@ class GridMap : public Node3D {
 		Set<IndexKey> cells;
 		RID collision_debug;
 		RID collision_debug_instance;
+		RID area_debug;
+		RID area_debug_instance;
 
 		bool dirty = false;
 		RID static_body;
+		Ref<GridMapArea> area;
 		Map<IndexKey, NavMesh> navmesh_ids;
 		Map<int, IndexKey> shapes_cell;
+		Map<int, IndexKey> areas_cell;
+		Map<int, int> areas_shape_indices;
 	};
 
 	union OctantKey {
@@ -135,6 +157,9 @@ class GridMap : public Node3D {
 
 	uint32_t collision_layer = 1;
 	uint32_t collision_mask = 1;
+	bool area_enabled = false;
+	uint32_t area_layer = 1;
+	uint32_t area_mask = 1;
 	bool ray_pickable = true;
 	bool bake_navigation = false;
 	uint32_t navigation_layers = 1;
@@ -164,6 +189,8 @@ class GridMap : public Node3D {
 	Map<IndexKey, RID> multimeshes;
 	Map<IndexKey, int> instance_indices;
 
+	Callable area_status_callback;
+
 	void _recreate_octant_data();
 
 	struct BakeLight {
@@ -179,6 +206,7 @@ class GridMap : public Node3D {
 
 	void _reset_physic_bodies_collision_filters();
 	void _reset_physic_bodies_ray_pickable();
+	void _reset_areas_collision_filters();
 	void _octant_enter_world(const OctantKey &p_key);
 	void _octant_exit_world(const OctantKey &p_key);
 	bool _octant_update(const OctantKey &p_key);
@@ -194,6 +222,8 @@ class GridMap : public Node3D {
 	void _clear_internal();
 
 	Vector3 _get_offset() const;
+
+	void _area_status_notification(PhysicsServer3D::AreaBodyStatus p_status, RID p_other, ObjectID p_other_id, uint32_t p_other_shape, uint32_t p_shape, RID p_rid);
 
 	struct BakedMesh {
 		Ref<Mesh> mesh;
@@ -227,6 +257,21 @@ public:
 
 	void set_collision_mask_value(int p_layer_number, bool p_value);
 	bool get_collision_mask_value(int p_layer_number) const;
+
+	void set_area_enabled(bool p_enabled);
+	bool is_area_enabled() const;
+
+	void set_area_collision_layer(uint32_t p_layer);
+	uint32_t get_area_collision_layer() const;
+
+	void set_area_collision_mask(uint32_t p_mask);
+	uint32_t get_area_collision_mask() const;
+
+	void set_area_collision_layer_value(int p_layer_number, bool p_value);
+	bool get_area_collision_layer_value(int p_layer_number) const;
+
+	void set_area_collision_mask_value(int p_layer_number, bool p_value);
+	bool get_area_collision_mask_value(int p_layer_number) const;
 
 	void set_ray_pickable(bool p_ray_pickable);
 	bool is_ray_pickable() const;
@@ -276,6 +321,8 @@ public:
 
 	Array get_bake_meshes();
 	RID get_bake_mesh_instance(int p_idx);
+
+	void set_area_monitor_callback(const Callable &callable);
 
 	RID get_cell_multimesh_instance(const Vector3i &p_position);
 

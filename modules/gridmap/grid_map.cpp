@@ -39,6 +39,14 @@
 #include "servers/navigation_server_3d.h"
 #include "servers/rendering_server.h"
 
+void GridMapArea::status_notification(PhysicsServer3D::AreaBodyStatus p_status, RID p_other, ObjectID p_other_id, uint32_t p_other_shape, uint32_t p_shape) {
+	owner->_area_status_notification(p_status, p_other, p_other_id, p_other_shape, p_shape, rid);
+}
+
+void GridMapArea::_bind_methods() {
+	ClassDB::bind_method(D_METHOD("status_notification"), &GridMapArea::status_notification);
+}
+
 bool GridMap::_set(const StringName &p_name, const Variant &p_value) {
 	String name = p_name;
 
@@ -187,6 +195,71 @@ bool GridMap::get_collision_mask_value(int p_layer_number) const {
 	return get_collision_mask() & (1 << (p_layer_number - 1));
 }
 
+void GridMap::set_area_enabled(bool p_enabled) {
+	if (area_enabled != p_enabled) {
+		area_enabled = p_enabled;
+		_recreate_octant_data();
+	}
+}
+
+bool GridMap::is_area_enabled() const {
+	return area_enabled;
+}
+
+void GridMap::set_area_collision_layer(uint32_t p_layer) {
+	area_layer = p_layer;
+	_reset_areas_collision_filters();
+}
+
+uint32_t GridMap::get_area_collision_layer() const {
+	return area_layer;
+}
+
+void GridMap::set_area_collision_mask(uint32_t p_mask) {
+	area_mask = p_mask;
+	_reset_areas_collision_filters();
+}
+
+uint32_t GridMap::get_area_collision_mask() const {
+	return area_mask;
+}
+
+void GridMap::set_area_collision_layer_value(int p_layer_number, bool p_value) {
+	ERR_FAIL_COND_MSG(p_layer_number < 1, "Area collision layer number must be between 1 and 32 inclusive.");
+	ERR_FAIL_COND_MSG(p_layer_number > 32, "Area collision layer number must be between 1 and 32 inclusive.");
+	uint32_t area_collision_layer = get_area_collision_layer();
+	if (p_value) {
+		area_collision_layer |= 1 << (p_layer_number - 1);
+	} else {
+		area_collision_layer &= ~(1 << (p_layer_number - 1));
+	}
+	set_area_collision_layer(area_collision_layer);
+}
+
+bool GridMap::get_area_collision_layer_value(int p_layer_number) const {
+	ERR_FAIL_COND_V_MSG(p_layer_number < 1, false, "Area collision layer number must be between 1 and 32 inclusive.");
+	ERR_FAIL_COND_V_MSG(p_layer_number > 32, false, "Area collision layer number must be between 1 and 32 inclusive.");
+	return get_area_collision_layer() & (1 << (p_layer_number - 1));
+}
+
+void GridMap::set_area_collision_mask_value(int p_layer_number, bool p_value) {
+	ERR_FAIL_COND_MSG(p_layer_number < 1, "Area collision layer number must be between 1 and 32 inclusive.");
+	ERR_FAIL_COND_MSG(p_layer_number > 32, "Area collision layer number must be between 1 and 32 inclusive.");
+	uint32_t mask = get_area_collision_mask();
+	if (p_value) {
+		mask |= 1 << (p_layer_number - 1);
+	} else {
+		mask &= ~(1 << (p_layer_number - 1));
+	}
+	set_area_collision_mask(mask);
+}
+
+bool GridMap::get_area_collision_mask_value(int p_layer_number) const {
+	ERR_FAIL_COND_V_MSG(p_layer_number < 1, false, "Area collision layer number must be between 1 and 32 inclusive.");
+	ERR_FAIL_COND_V_MSG(p_layer_number > 32, false, "Area collision layer number must be between 1 and 32 inclusive.");
+	return get_area_collision_mask() & (1 << (p_layer_number - 1));
+}
+
 void GridMap::set_ray_pickable(bool p_ray_pickable) {
 	ray_pickable = p_ray_pickable;
 	_reset_physic_bodies_ray_pickable();
@@ -326,12 +399,30 @@ void GridMap::set_cell_item(const Vector3i &p_position, int p_item, int p_rot) {
 		PhysicsServer3D::get_singleton()->body_set_collision_layer(g->static_body, collision_layer);
 		PhysicsServer3D::get_singleton()->body_set_collision_mask(g->static_body, collision_mask);
 		PhysicsServer3D::get_singleton()->body_set_ray_pickable(g->static_body, ray_pickable);
+
+		if (area_enabled) {
+			if (!g->area.is_valid()) {
+				g->area = Ref<GridMapArea>(memnew(GridMapArea));
+				g->area->owner = this;
+			}
+			g->area->rid = PhysicsServer3D::get_singleton()->area_create();
+			PhysicsServer3D::get_singleton()->area_attach_object_instance_id(g->area->rid, get_instance_id());
+			PhysicsServer3D::get_singleton()->area_set_collision_layer(g->area->rid, area_layer);
+			PhysicsServer3D::get_singleton()->area_set_collision_mask(g->area->rid, area_mask);
+		}
+
 		SceneTree *st = SceneTree::get_singleton();
 
 		if (st && st->is_debugging_collisions_hint()) {
 			g->collision_debug = RenderingServer::get_singleton()->mesh_create();
 			g->collision_debug_instance = RenderingServer::get_singleton()->instance_create();
 			RenderingServer::get_singleton()->instance_set_base(g->collision_debug_instance, g->collision_debug);
+
+			if (area_enabled) {
+				g->area_debug = RenderingServer::get_singleton()->mesh_create();
+				g->area_debug_instance = RenderingServer::get_singleton()->instance_create();
+				RenderingServer::get_singleton()->instance_set_base(g->area_debug_instance, g->area_debug);
+			}
 		}
 
 		octant_map[octantkey] = g;
@@ -405,8 +496,16 @@ void GridMap::_octant_transform(const OctantKey &p_key) {
 	Octant &g = *octant_map[p_key];
 	PhysicsServer3D::get_singleton()->body_set_state(g.static_body, PhysicsServer3D::BODY_STATE_TRANSFORM, get_global_transform());
 
+	if (area_enabled && g.area.is_valid()) {
+		PhysicsServer3D::get_singleton()->area_set_transform(g.area->rid, get_global_transform());
+	}
+
 	if (g.collision_debug_instance.is_valid()) {
 		RS::get_singleton()->instance_set_transform(g.collision_debug_instance, get_global_transform());
+	}
+
+	if (g.area_debug_instance.is_valid()) {
+		RS::get_singleton()->instance_set_transform(g.area_debug_instance, get_global_transform());
 	}
 
 	for (int i = 0; i < g.multimesh_instances.size(); i++) {
@@ -423,6 +522,23 @@ bool GridMap::_octant_update(const OctantKey &p_key) {
 
 	//erase body shapes
 	PhysicsServer3D::get_singleton()->body_clear_shapes(g.static_body);
+
+	if (g.area.is_valid() && g.area->rid.is_valid()) {
+	 	PhysicsServer3D::get_singleton()->area_clear_shapes(g.area->rid);
+
+		if (!area_enabled) {
+			PhysicsServer3D::get_singleton()->free(g.area->rid);
+		}
+
+		if (g.area_debug.is_valid()) {
+			RS::get_singleton()->mesh_clear(g.area_debug);
+
+			if (!area_enabled) {
+				RS::get_singleton()->free(g.area_debug_instance);
+				RS::get_singleton()->free(g.area_debug);
+			}
+		}
+	}
 
 	//erase body shapes debug
 	if (g.collision_debug.is_valid()) {
@@ -443,6 +559,10 @@ bool GridMap::_octant_update(const OctantKey &p_key) {
 	}
 	g.multimesh_instances.clear();
 
+	g.shapes_cell.clear();
+	g.areas_cell.clear();
+	g.areas_shape_indices.clear();
+
 	if (g.cells.size() == 0) {
 		//octant no longer needed
 		_octant_clean_up(p_key);
@@ -450,6 +570,7 @@ bool GridMap::_octant_update(const OctantKey &p_key) {
 	}
 
 	Vector<Vector3> col_debug;
+	Vector<Vector3> a_debug;
 
 	/*
 	 * foreach item in this octant,
@@ -459,6 +580,7 @@ bool GridMap::_octant_update(const OctantKey &p_key) {
 
 	Map<int, List<Pair<Transform3D, IndexKey>>> multimesh_items;
 	int shapeidx = 0;
+	int areaidx = 0;
 
 	for (Set<IndexKey>::Element *E = g.cells.front(); E; E = E->next()) {
 		ERR_CONTINUE(!cell_map.has(E->get()));
@@ -501,6 +623,22 @@ bool GridMap::_octant_update(const OctantKey &p_key) {
 			shapeidx++;
 			if (g.collision_debug.is_valid()) {
 				shapes.write[i].shape->add_vertices_to_array(col_debug, xform * shapes[i].local_transform);
+			}
+		}
+
+		if (area_enabled && g.area.is_valid()) {
+			Vector<MeshLibrary::ShapeData> areas = mesh_library->get_item_areas(c.item);
+			for (int i = 0; i < areas.size(); i++) {
+				if (!areas[i].shape.is_valid()) {
+					continue;
+				}
+				PhysicsServer3D::get_singleton()->area_add_shape(g.area->rid, areas[i].shape->get_rid(), xform * areas[i].local_transform);
+				g.areas_cell[areaidx] = E->get();
+				g.areas_shape_indices[areaidx] = i;
+				areaidx++;
+				if (g.area_debug.is_valid()) {
+					areas.write[i].shape->add_vertices_to_array(a_debug, xform * areas[i].local_transform);
+				}
 			}
 		}
 
@@ -577,6 +715,18 @@ bool GridMap::_octant_update(const OctantKey &p_key) {
 		}
 	}
 
+	if (a_debug.size()) {
+		Array arr;
+		arr.resize(RS::ARRAY_MAX);
+		arr[RS::ARRAY_VERTEX] = a_debug;
+
+		RS::get_singleton()->mesh_add_surface_from_arrays(g.area_debug, RS::PRIMITIVE_LINES, arr);
+		SceneTree *st = SceneTree::get_singleton();
+		if (st) {
+			RS::get_singleton()->mesh_surface_set_material(g.area_debug, 0, st->get_debug_collision_material()->get_rid());
+		}
+	}
+
 	g.dirty = false;
 
 	return false;
@@ -586,6 +736,17 @@ void GridMap::_reset_physic_bodies_collision_filters() {
 	for (const KeyValue<OctantKey, Octant *> &E : octant_map) {
 		PhysicsServer3D::get_singleton()->body_set_collision_layer(E.value->static_body, collision_layer);
 		PhysicsServer3D::get_singleton()->body_set_collision_mask(E.value->static_body, collision_mask);
+	}
+}
+
+void GridMap::_reset_areas_collision_filters() {
+	if (area_enabled) {
+		for (const KeyValue<OctantKey, Octant *> &E : octant_map) {
+			if (E.value->area.is_valid()) {
+				PhysicsServer3D::get_singleton()->area_set_collision_layer(E.value->area->rid, area_layer);
+				PhysicsServer3D::get_singleton()->area_set_collision_mask(E.value->area->rid, area_mask);
+			}
+		}
 	}
 }
 
@@ -601,9 +762,19 @@ void GridMap::_octant_enter_world(const OctantKey &p_key) {
 	PhysicsServer3D::get_singleton()->body_set_state(g.static_body, PhysicsServer3D::BODY_STATE_TRANSFORM, get_global_transform());
 	PhysicsServer3D::get_singleton()->body_set_space(g.static_body, get_world_3d()->get_space());
 
+	if (area_enabled && g.area.is_valid()) {
+		PhysicsServer3D::get_singleton()->area_set_transform(g.area->rid, get_global_transform());
+		PhysicsServer3D::get_singleton()->area_set_space(g.area->rid, get_world_3d()->get_space());
+	}
+
 	if (g.collision_debug_instance.is_valid()) {
 		RS::get_singleton()->instance_set_scenario(g.collision_debug_instance, get_world_3d()->get_scenario());
 		RS::get_singleton()->instance_set_transform(g.collision_debug_instance, get_global_transform());
+	}
+
+	if (g.area_debug_instance.is_valid()) {
+		RS::get_singleton()->instance_set_scenario(g.area_debug_instance, get_world_3d()->get_scenario());
+		RS::get_singleton()->instance_set_transform(g.area_debug_instance, get_global_transform());
 	}
 
 	for (int i = 0; i < g.multimesh_instances.size(); i++) {
@@ -635,8 +806,16 @@ void GridMap::_octant_exit_world(const OctantKey &p_key) {
 	PhysicsServer3D::get_singleton()->body_set_state(g.static_body, PhysicsServer3D::BODY_STATE_TRANSFORM, get_global_transform());
 	PhysicsServer3D::get_singleton()->body_set_space(g.static_body, RID());
 
+	if (area_enabled && g.area.is_valid()) {
+		PhysicsServer3D::get_singleton()->area_set_space(g.area->rid, RID());
+	}
+
 	if (g.collision_debug_instance.is_valid()) {
 		RS::get_singleton()->instance_set_scenario(g.collision_debug_instance, RID());
+	}
+
+	if (g.area_debug_instance.is_valid()) {
+		RS::get_singleton()->instance_set_scenario(g.area_debug_instance, RID());
 	}
 
 	for (int i = 0; i < g.multimesh_instances.size(); i++) {
@@ -662,7 +841,18 @@ void GridMap::_octant_clean_up(const OctantKey &p_key) {
 		RS::get_singleton()->free(g.collision_debug_instance);
 	}
 
+	if (g.area_debug.is_valid()) {
+		RS::get_singleton()->free(g.area_debug);
+	}
+	if (g.area_debug_instance.is_valid()) {
+		RS::get_singleton()->free(g.area_debug_instance);
+	}
+
 	PhysicsServer3D::get_singleton()->free(g.static_body);
+
+	if (g.area.is_valid() && g.area->rid.is_valid()) {
+		PhysicsServer3D::get_singleton()->free(g.area->rid);
+	}
 
 	// Erase navigation
 	for (const KeyValue<IndexKey, Octant::NavMesh> &E : g.navmesh_ids) {
@@ -740,6 +930,14 @@ void GridMap::_update_visibility() {
 		for (int i = 0; i < octant->multimesh_instances.size(); i++) {
 			const Octant::MultimeshInstance &mi = octant->multimesh_instances[i];
 			RS::get_singleton()->instance_set_visible(mi.instance, is_visible_in_tree());
+		}
+
+		if (octant->collision_debug_instance.is_valid()) {
+			RS::get_singleton()->instance_set_visible(octant->collision_debug_instance, is_visible_in_tree());
+		}
+
+		if (octant->area_debug_instance.is_valid()) {
+			RS::get_singleton()->instance_set_visible(octant->area_debug_instance, is_visible_in_tree());
 		}
 	}
 
@@ -826,6 +1024,21 @@ void GridMap::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_collision_layer_value", "layer_number", "value"), &GridMap::set_collision_layer_value);
 	ClassDB::bind_method(D_METHOD("get_collision_layer_value", "layer_number"), &GridMap::get_collision_layer_value);
 
+	ClassDB::bind_method(D_METHOD("set_area_enabled", "enabled"), &GridMap::set_area_enabled);
+	ClassDB::bind_method(D_METHOD("is_area_enabled"), &GridMap::is_area_enabled);
+
+	ClassDB::bind_method(D_METHOD("set_area_collision_layer", "layer"), &GridMap::set_area_collision_layer);
+	ClassDB::bind_method(D_METHOD("get_area_collision_layer"), &GridMap::get_area_collision_layer);
+
+	ClassDB::bind_method(D_METHOD("set_area_collision_mask", "mask"), &GridMap::set_area_collision_mask);
+	ClassDB::bind_method(D_METHOD("get_area_collision_mask"), &GridMap::get_area_collision_mask);
+
+	ClassDB::bind_method(D_METHOD("set_area_collision_mask_value", "layer_number", "value"), &GridMap::set_area_collision_mask_value);
+	ClassDB::bind_method(D_METHOD("get_area_collision_mask_value", "layer_number"), &GridMap::get_area_collision_mask_value);
+
+	ClassDB::bind_method(D_METHOD("set_area_collision_layer_value", "layer_number", "value"), &GridMap::set_area_collision_layer_value);
+	ClassDB::bind_method(D_METHOD("get_area_collision_layer_value", "layer_number"), &GridMap::get_area_collision_layer_value);
+
 	ClassDB::bind_method(D_METHOD("set_ray_pickable", "ray_pickable"), &GridMap::set_ray_pickable);
 	ClassDB::bind_method(D_METHOD("is_ray_pickable"), &GridMap::is_ray_pickable);
 
@@ -877,6 +1090,7 @@ void GridMap::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("clear_baked_meshes"), &GridMap::clear_baked_meshes);
 	ClassDB::bind_method(D_METHOD("make_baked_meshes", "gen_lightmap_uv", "lightmap_uv_texel_size"), &GridMap::make_baked_meshes, DEFVAL(false), DEFVAL(0.1));
 
+	ClassDB::bind_method(D_METHOD("set_area_monitor_callback", "callable"), &GridMap::set_area_monitor_callback);
 	ClassDB::bind_method(D_METHOD("get_cell_multimesh_instance"), &GridMap::get_cell_multimesh_instance);
 	ClassDB::bind_method(D_METHOD("get_cell_mesh_instance_index"), &GridMap::get_cell_mesh_instance_index);
 	ClassDB::bind_method(D_METHOD("get_shape_cell"), &GridMap::get_shape_cell);
@@ -893,6 +1107,10 @@ void GridMap::_bind_methods() {
 	ADD_GROUP("Collision", "collision_");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "collision_layer", PROPERTY_HINT_LAYERS_3D_PHYSICS), "set_collision_layer", "get_collision_layer");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "collision_mask", PROPERTY_HINT_LAYERS_3D_PHYSICS), "set_collision_mask", "get_collision_mask");
+	ADD_GROUP("Area", "area_");
+	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "area_enabled"), "set_area_enabled", "is_area_enabled");
+	ADD_PROPERTY(PropertyInfo(Variant::INT, "area_layer", PROPERTY_HINT_LAYERS_3D_PHYSICS), "set_area_collision_layer", "get_area_collision_layer");
+	ADD_PROPERTY(PropertyInfo(Variant::INT, "area_mask", PROPERTY_HINT_LAYERS_3D_PHYSICS), "set_area_collision_mask", "get_area_collision_mask");
 	ADD_GROUP("Navigation", "");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "bake_navigation"), "set_bake_navigation", "is_baking_navigation");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "navigation_layers", PROPERTY_HINT_LAYERS_3D_NAVIGATION), "set_navigation_layers", "get_navigation_layers");
@@ -1101,6 +1319,19 @@ RID GridMap::get_bake_mesh_instance(int p_idx) {
 	return baked_meshes[p_idx].instance;
 }
 
+void GridMap::set_area_monitor_callback(const Callable &callable) {
+	if (area_enabled) {
+		area_status_callback = callable;
+		for (KeyValue<OctantKey, Octant *> &e : octant_map) {
+			Octant *octant = e.value;
+			if (octant->area->rid.is_valid()) {
+				PhysicsServer3D::get_singleton()->area_set_monitorable(octant->area->rid, true);
+				PhysicsServer3D::get_singleton()->area_set_monitor_callback(octant->area->rid, *octant->area, StringName("status_notification"));
+			}
+		}
+	}
+}
+
 RID GridMap::get_cell_multimesh_instance(const Vector3i &p_position) {
 	IndexKey key;
 	key.x = p_position.x;
@@ -1126,7 +1357,39 @@ Vector3i GridMap::get_shape_cell(const RID &p_static_body, const int p_shape_idx
 			return c;
 		}
 	}
-	return Vector3i(-10000,-10000,-10000);
+	return Vector3i(INT32_MIN,INT32_MIN,INT32_MIN);
+}
+
+void GridMap::_area_status_notification(PhysicsServer3D::AreaBodyStatus p_status, RID p_other, ObjectID p_other_id, uint32_t p_other_shape, uint32_t p_shape, RID p_rid) {
+	Variant res[5];
+	Variant *resptr[5];
+	for (int i = 0; i < 5; i++) {
+	 	resptr[i] = &res[i];
+	}
+
+	Vector3i c = Vector3i(INT32_MIN,INT32_MIN,INT32_MIN);
+	uint32_t shape = -1;
+	for (KeyValue<OctantKey, Octant *> &e : octant_map) {
+		Octant *octant = e.value;
+		if (octant->area->rid == p_rid) {
+			IndexKey key = octant->areas_cell[p_shape];
+			c = Vector3i(key.x, key.y, key.z);
+			shape = octant->areas_shape_indices[p_shape];
+			break;
+		}
+	}
+
+	CollisionObject3D *obj = Object::cast_to<CollisionObject3D>(ObjectDB::get_instance(p_other_id));
+
+	res[0] = p_status;
+	res[1] = obj;
+	res[2] = p_other_shape;
+	res[3] = c;
+	res[4] = shape;
+
+	Callable::CallError ce;
+	Variant ret;
+	area_status_callback.call((const Variant **)resptr, 5, ret, ce);
 }
 
 GridMap::GridMap() {
