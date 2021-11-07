@@ -1326,7 +1326,7 @@ void GridMap::set_area_monitor_callback(const Callable &callable) {
 			Octant *octant = e.value;
 			if (octant->area->rid.is_valid()) {
 				PhysicsServer3D::get_singleton()->area_set_monitorable(octant->area->rid, true);
-				PhysicsServer3D::get_singleton()->area_set_monitor_callback(octant->area->rid, *octant->area, StringName("status_notification"));
+				//PhysicsServer3D::get_singleton()->area_set_monitor_callback(octant->area->rid, *octant->area, StringName("status_notification"));
 			}
 		}
 	}
