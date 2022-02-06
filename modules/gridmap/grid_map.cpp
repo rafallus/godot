@@ -387,10 +387,13 @@ int GridMap::get_cell_item(const Vector3i &p_position) const {
 	key.y = p_position.y;
 	key.z = p_position.z;
 
-	if (!cell_map.has(key)) {
+	const Map<IndexKey, Cell>::Element *E = cell_map.find(key);
+
+	if (E) {
+		return E->get().item;
+	} else {
 		return INVALID_CELL_ITEM;
 	}
-	return cell_map[key].item;
 }
 
 int GridMap::get_cell_item_orientation(const Vector3i &p_position) const {
@@ -465,6 +468,12 @@ bool GridMap::_octant_update(const OctantKey &p_key) {
 		RS::get_singleton()->free(g.multimesh_instances[i].multimesh);
 	}
 	g.multimesh_instances.clear();
+	Map<int, Ref<Material>> materials_override = g.materials_override;
+	Map<int, Ref<Material>> materials_overlay = g.materials_overlay;
+	g.materials_override.clear();
+	g.materials_overlay.clear();
+	Map<int, Octant::MultimeshInstance> item_multimeshes = g.item_multimesh_map;
+	g.item_multimesh_map.clear();
 
 	if (g.cells.size() == 0) {
 		//octant no longer needed
@@ -547,28 +556,42 @@ bool GridMap::_octant_update(const OctantKey &p_key) {
 	if (baked_meshes.size() == 0) {
 		for (const KeyValue<int, List<Pair<Transform3D, IndexKey>>> &E : multimesh_items) {
 			Octant::MultimeshInstance mmi;
+			int item = E.key;
 
 			RID mm = RS::get_singleton()->multimesh_create();
 			RS::get_singleton()->multimesh_allocate_data(mm, E.value.size(), RS::MULTIMESH_TRANSFORM_3D);
-			RS::get_singleton()->multimesh_set_mesh(mm, mesh_library->get_item_mesh(E.key)->get_rid());
+			RS::get_singleton()->multimesh_set_mesh(mm, mesh_library->get_item_mesh(item)->get_rid());
+			Map<int, Octant::MultimeshInstance>::Element *MI = item_multimeshes.find(item);
 
 			int idx = 0;
 			for (const Pair<Transform3D, IndexKey> &F : E.value) {
+				IndexKey cell = F.second;
 				RS::get_singleton()->multimesh_instance_set_transform(mm, idx, F.first);
-#ifdef TOOLS_ENABLED
+				mmi.instances_map[cell] = idx;
 
-				Octant::MultimeshInstance::Item it;
-				it.index = idx;
-				it.transform = F.first;
-				it.key = F.second;
-				mmi.items.push_back(it);
-#endif
+				if (MI) {
+					Map<IndexKey, Color>::Element *C = MI->get().color_map.find(cell);
+					if (C) {
+						Color c = C->get();
+						RS::get_singleton()->multimesh_instance_set_color(mm, idx, c);
+						mmi.color_map[cell] = c;
+					}
+
+					C = MI->get().data_map.find(cell);
+					if (C) {
+						Color c = C->get();
+						RS::get_singleton()->multimesh_instance_set_custom_data(mm, idx, c);
+						mmi.data_map[cell] = c;
+					}
+				}
 
 				idx++;
 			}
 
 			RID instance = RS::get_singleton()->instance_create();
 			RS::get_singleton()->instance_set_base(instance, mm);
+			RS::get_singleton()->instance_geometry_set_transparency(instance, transparency);
+			RS::get_singleton()->instance_geometry_set_lod_bias(instance, lod_bias);
 
 			if (is_inside_tree()) {
 				RS::get_singleton()->instance_set_scenario(instance, get_world_3d()->get_scenario());
@@ -579,6 +602,25 @@ bool GridMap::_octant_update(const OctantKey &p_key) {
 			mmi.instance = instance;
 
 			g.multimesh_instances.push_back(mmi);
+			g.item_multimesh_map[item] = mmi;
+
+			Map<int, Ref<Material>>::Element *M = materials_override.find(item);
+			if (M) {
+				Ref<Material> material_override = M->get();
+				if (material_override.is_valid()) {
+					RS::get_singleton()->instance_geometry_set_material_override(instance, material_override->get_rid());
+					g.materials_override[item] = material_override;
+				}
+			}
+
+			M = materials_overlay.find(item);
+			if (M) {
+				Ref<Material> material_overlay = M->get();
+				if (material_overlay.is_valid()) {
+					RS::get_singleton()->instance_geometry_set_material_overlay(instance, material_overlay->get_rid());
+					g.materials_overlay[item] = material_overlay;
+				}
+			}
 		}
 	}
 
@@ -688,6 +730,9 @@ void GridMap::_octant_clean_up(const OctantKey &p_key) {
 		RS::get_singleton()->free(g.multimesh_instances[i].multimesh);
 	}
 	g.multimesh_instances.clear();
+	g.materials_override.clear();
+	g.materials_overlay.clear();
+	g.item_multimesh_map.clear();
 }
 
 void GridMap::_notification(int p_what) {
@@ -1103,6 +1148,290 @@ Array GridMap::get_bake_meshes() {
 RID GridMap::get_bake_mesh_instance(int p_idx) {
 	ERR_FAIL_INDEX_V(p_idx, baked_meshes.size(), RID());
 	return baked_meshes[p_idx].instance;
+}
+
+void GridMap::set_transparency(float p_transparency) {
+	transparency = p_transparency;
+
+	for (KeyValue<OctantKey, Octant *> &E : octant_map) {
+		Octant *o = E.value;
+
+		for (int i = 0; i < o->multimesh_instances.size(); i++) {
+			RID instance = o->multimesh_instances[i].instance;
+			RS::get_singleton()->instance_geometry_set_transparency(instance, transparency);
+		}
+	}
+}
+
+float GridMap::get_transparency() const {
+	return transparency;
+}
+
+void GridMap::set_lod_bias(float p_lod_bias) {
+	lod_bias = p_lod_bias;
+
+	for (KeyValue<OctantKey, Octant *> &E : octant_map) {
+		Octant *o = E.value;
+
+		for (int i = 0; i < o->multimesh_instances.size(); i++) {
+			RID instance = o->multimesh_instances[i].instance;
+			RS::get_singleton()->instance_geometry_set_lod_bias(instance, lod_bias);
+		}
+	}
+}
+
+float GridMap::get_lod_bias() const {
+	return lod_bias;
+}
+
+void GridMap::octant_cell_set_material_override(const Vector3i &p_position, const Ref<Material> &p_material) {
+	ERR_FAIL_INDEX(ABS(p_position.x), 1 << 20);
+	ERR_FAIL_INDEX(ABS(p_position.y), 1 << 20);
+	ERR_FAIL_INDEX(ABS(p_position.z), 1 << 20);
+
+	IndexKey key;
+	key.x = p_position.x;
+	key.y = p_position.y;
+	key.z = p_position.z;
+
+	Map<IndexKey, Cell>::Element *C = cell_map.find(key);
+
+	if (C) {
+		OctantKey ok;
+		ok.x = p_position.x / octant_size;
+		ok.y = p_position.y / octant_size;
+		ok.z = p_position.z / octant_size;
+
+		Octant *o = octant_map[ok];
+		int item = C->get().item;
+		RID instance = o->item_multimesh_map[item].instance;
+		o->materials_override[item] = p_material;
+		RS::get_singleton()->instance_geometry_set_material_override(instance, p_material->get_rid());
+	}
+}
+
+Ref<Material> GridMap::octant_cell_get_material_override(const Vector3i &p_position) const {
+	ERR_FAIL_INDEX_V(ABS(p_position.x), 1 << 20, Ref<Material>());
+	ERR_FAIL_INDEX_V(ABS(p_position.y), 1 << 20, Ref<Material>());
+	ERR_FAIL_INDEX_V(ABS(p_position.z), 1 << 20, Ref<Material>());
+
+	IndexKey key;
+	key.x = p_position.x;
+	key.y = p_position.y;
+	key.z = p_position.z;
+
+	const Map<IndexKey, Cell>::Element *C = cell_map.find(key);
+
+	if (C) {
+		OctantKey ok;
+		ok.x = p_position.x / octant_size;
+		ok.y = p_position.y / octant_size;
+		ok.z = p_position.z / octant_size;
+
+		Octant *o = octant_map[ok];
+		int item = C->get().item;
+		const Map<int, Ref<Material>>::Element *M = o->materials_override.find(item);
+
+		if (M) {
+			return M->get();
+		}
+	}
+
+	return Ref<Material>();
+}
+
+void GridMap::octant_cell_set_material_overlay(const Vector3i &p_position, const Ref<Material> &p_material) {
+	ERR_FAIL_INDEX(ABS(p_position.x), 1 << 20);
+	ERR_FAIL_INDEX(ABS(p_position.y), 1 << 20);
+	ERR_FAIL_INDEX(ABS(p_position.z), 1 << 20);
+
+	IndexKey key;
+	key.x = p_position.x;
+	key.y = p_position.y;
+	key.z = p_position.z;
+
+	Map<IndexKey, Cell>::Element *C = cell_map.find(key);
+
+	if (C) {
+		OctantKey ok;
+		ok.x = p_position.x / octant_size;
+		ok.y = p_position.y / octant_size;
+		ok.z = p_position.z / octant_size;
+
+		Octant *o = octant_map[ok];
+		int item = C->get().item;
+		RID instance = o->item_multimesh_map[item].instance;
+		o->materials_overlay[item] = p_material;
+		RS::get_singleton()->instance_geometry_set_material_overlay(instance, p_material->get_rid());
+	}
+}
+
+Ref<Material> GridMap::octant_cell_get_material_overlay(const Vector3i &p_position) const {
+	ERR_FAIL_INDEX_V(ABS(p_position.x), 1 << 20, Ref<Material>());
+	ERR_FAIL_INDEX_V(ABS(p_position.y), 1 << 20, Ref<Material>());
+	ERR_FAIL_INDEX_V(ABS(p_position.z), 1 << 20, Ref<Material>());
+
+	IndexKey key;
+	key.x = p_position.x;
+	key.y = p_position.y;
+	key.z = p_position.z;
+
+	const Map<IndexKey, Cell>::Element *C = cell_map.find(key);
+
+	if (C) {
+		OctantKey ok;
+		ok.x = p_position.x / octant_size;
+		ok.y = p_position.y / octant_size;
+		ok.z = p_position.z / octant_size;
+
+		Octant *o = octant_map[ok];
+		int item = C->get().item;
+		const Map<int, Ref<Material>>::Element *M = o->materials_overlay.find(item);
+
+		if (M) {
+			return M->get();
+		}
+	}
+
+	return Ref<Material>();
+}
+
+void GridMap::set_cell_mesh_color(const Vector3i &p_position, const Color &p_color) {
+	ERR_FAIL_INDEX(ABS(p_position.x), 1 << 20);
+	ERR_FAIL_INDEX(ABS(p_position.y), 1 << 20);
+	ERR_FAIL_INDEX(ABS(p_position.z), 1 << 20);
+
+	IndexKey key;
+	key.x = p_position.x;
+	key.y = p_position.y;
+	key.z = p_position.z;
+
+	Map<IndexKey, Cell>::Element *C = cell_map.find(key);
+
+	if (C) {
+		OctantKey ok;
+		ok.x = p_position.x / octant_size;
+		ok.y = p_position.y / octant_size;
+		ok.z = p_position.z / octant_size;
+
+		Octant *o = octant_map[ok];
+		int item = C->get().item;
+		Octant::MultimeshInstance mmi = o->item_multimesh_map[item];
+		mmi.color_map[key] = p_color;
+		RS::get_singleton()->multimesh_instance_set_color(mmi.multimesh, mmi.instances_map[key], p_color);
+	}
+}
+
+Color GridMap::get_cell_mesh_color(const Vector3i &p_position) const {
+	ERR_FAIL_INDEX_V(ABS(p_position.x), 1 << 20, Color());
+	ERR_FAIL_INDEX_V(ABS(p_position.y), 1 << 20, Color());
+	ERR_FAIL_INDEX_V(ABS(p_position.z), 1 << 20, Color());
+
+	IndexKey key;
+	key.x = p_position.x;
+	key.y = p_position.y;
+	key.z = p_position.z;
+
+	const Map<IndexKey, Cell>::Element *C = cell_map.find(key);
+
+	if (C) {
+		OctantKey ok;
+		ok.x = p_position.x / octant_size;
+		ok.y = p_position.y / octant_size;
+		ok.z = p_position.z / octant_size;
+
+		Octant *o = octant_map[ok];
+		int item = C->get().item;
+		Octant::MultimeshInstance mmi = o->item_multimesh_map[item];
+		Map<IndexKey, Color>::Element *E = mmi.color_map.find(key);
+		if (E) {
+			return E->get();
+		}
+	}
+
+	return Color();
+}
+
+void GridMap::set_cell_mesh_custom_data(const Vector3i &p_position, const Color &p_data) {
+	ERR_FAIL_INDEX(ABS(p_position.x), 1 << 20);
+	ERR_FAIL_INDEX(ABS(p_position.y), 1 << 20);
+	ERR_FAIL_INDEX(ABS(p_position.z), 1 << 20);
+
+	IndexKey key;
+	key.x = p_position.x;
+	key.y = p_position.y;
+	key.z = p_position.z;
+
+	Map<IndexKey, Cell>::Element *C = cell_map.find(key);
+
+	if (C) {
+		OctantKey ok;
+		ok.x = p_position.x / octant_size;
+		ok.y = p_position.y / octant_size;
+		ok.z = p_position.z / octant_size;
+
+		Octant *o = octant_map[ok];
+		int item = C->get().item;
+		Octant::MultimeshInstance mmi = o->item_multimesh_map[item];
+		mmi.data_map[key] = p_data;
+		RS::get_singleton()->multimesh_instance_set_custom_data(mmi.multimesh, mmi.instances_map[key], p_data);
+	}
+}
+
+Color GridMap::get_cell_mesh_custom_data(const Vector3i &p_position) const {
+	ERR_FAIL_INDEX_V(ABS(p_position.x), 1 << 20, Color());
+	ERR_FAIL_INDEX_V(ABS(p_position.y), 1 << 20, Color());
+	ERR_FAIL_INDEX_V(ABS(p_position.z), 1 << 20, Color());
+
+	IndexKey key;
+	key.x = p_position.x;
+	key.y = p_position.y;
+	key.z = p_position.z;
+
+	const Map<IndexKey, Cell>::Element *C = cell_map.find(key);
+
+	if (C) {
+		OctantKey ok;
+		ok.x = p_position.x / octant_size;
+		ok.y = p_position.y / octant_size;
+		ok.z = p_position.z / octant_size;
+
+		Octant *o = octant_map[ok];
+		int item = C->get().item;
+		Octant::MultimeshInstance mmi = o->item_multimesh_map[item];
+		Map<IndexKey, Color>::Element *E = mmi.data_map.find(key);
+		if (E) {
+			return E->get();
+		}
+	}
+
+	return Color();
+}
+
+int GridMap::get_cell_mesh_instance_index(const Vector3i &p_position) const {
+	ERR_FAIL_INDEX_V(ABS(p_position.x), 1 << 20, -1);
+	ERR_FAIL_INDEX_V(ABS(p_position.y), 1 << 20, -1);
+	ERR_FAIL_INDEX_V(ABS(p_position.z), 1 << 20, -1);
+
+	IndexKey key;
+	key.x = p_position.x;
+	key.y = p_position.y;
+	key.z = p_position.z;
+
+	const Map<IndexKey, Cell>::Element *C = cell_map.find(key);
+
+	if (C) {
+		OctantKey ok;
+		ok.x = p_position.x / octant_size;
+		ok.y = p_position.y / octant_size;
+		ok.z = p_position.z / octant_size;
+
+		Octant *o = octant_map[ok];
+		int item = C->get().item;
+		return o->item_multimesh_map[item].instances_map[key];
+	}
+
+	return -1;
 }
 
 GridMap::GridMap() {

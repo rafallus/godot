@@ -97,16 +97,15 @@ class GridMap : public Node3D {
 		struct MultimeshInstance {
 			RID instance;
 			RID multimesh;
-			struct Item {
-				int index = 0;
-				Transform3D transform;
-				IndexKey key;
-			};
-
-			Vector<Item> items; //tools only, for changing visibility
+			Map<IndexKey, int> instances_map;
+			Map<IndexKey, Color> color_map;
+			Map<IndexKey, Color> data_map;
 		};
 
 		Vector<MultimeshInstance> multimesh_instances;
+		Map<int, MultimeshInstance> item_multimesh_map;
+		Map<int, Ref<Material>> materials_override;
+		Map<int, Ref<Material>> materials_overlay;
 		Set<IndexKey> cells;
 		RID collision_debug;
 		RID collision_debug_instance;
@@ -159,6 +158,9 @@ class GridMap : public Node3D {
 	Vector3::Axis clip_axis = Vector3::AXIS_Z;
 
 	Ref<MeshLibrary> mesh_library;
+
+	float transparency = 0.0;
+	float lod_bias = 1.0;
 
 	Map<OctantKey, Octant *> octant_map;
 	Map<IndexKey, Cell> cell_map;
@@ -276,6 +278,21 @@ public:
 
 	Array get_bake_meshes();
 	RID get_bake_mesh_instance(int p_idx);
+
+	void set_transparency(float p_transparency);
+	float get_transparency() const;
+	void set_lod_bias(float p_lod_bias);
+	float get_lod_bias() const;
+
+	void octant_cell_set_material_override(const Vector3i &p_position, const Ref<Material> &p_material);
+	Ref<Material> octant_cell_get_material_override(const Vector3i &p_position) const;
+	void octant_cell_set_material_overlay(const Vector3i &p_position, const Ref<Material> &p_material);
+	Ref<Material> octant_cell_get_material_overlay(const Vector3i &p_position) const;
+	void set_cell_mesh_color(const Vector3i &p_position, const Color &p_color);
+	Color get_cell_mesh_color(const Vector3i &p_position) const;
+	void set_cell_mesh_custom_data(const Vector3i &p_position, const Color &p_data);
+	Color get_cell_mesh_custom_data(const Vector3i &p_position) const;
+	int get_cell_mesh_instance_index(const Vector3i &p_position) const;
 
 	GridMap();
 	~GridMap();
