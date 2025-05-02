@@ -51,6 +51,8 @@ enum PackFileFlags {
 	PACK_FILE_REMOVAL = 1 << 1,
 };
 
+extern String file_access_messages[32];
+
 class PackSource;
 
 class PackedData {

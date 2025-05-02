@@ -34,6 +34,7 @@
 #include "core/object/script_language.h"
 #include "core/os/os.h"
 #include "core/version.h"
+#include "core/crypto/export_crypto.h"
 
 Error PackedData::add_pack(const String &p_path, bool p_replace_files, uint64_t p_offset) {
 	for (int i = 0; i < sources.size(); i++) {
@@ -204,7 +205,7 @@ bool PackedSourcePCK::try_open_pack(const String &p_path, bool p_replace_files, 
 	if (!pck_header_found) {
 		// Loading with offset feature not supported for self contained exe files.
 		if (p_offset != 0) {
-			ERR_FAIL_V_MSG(false, "Loading self-contained executable with offset not supported.");
+			ERR_FAIL_V_MSG(false, file_access_messages[13].access_string_cstm()); // 13
 		}
 
 		int64_t pck_off = OS::get_singleton()->get_embedded_pck_offset();
@@ -215,7 +216,7 @@ bool PackedSourcePCK::try_open_pack(const String &p_path, bool p_replace_files, 
 				magic = f->get_32();
 				if (magic == PACK_HEADER_MAGIC) {
 #ifdef DEBUG_ENABLED
-					print_verbose("PCK header found in executable pck section, loading from offset 0x" + String::num_int64(pck_off - 4, 16));
+					print_verbose(file_access_messages[2].access_string_cstm() + String::num_int64(pck_off - 4, 16)); // 2
 #endif
 					pck_header_found = true;
 					break;
@@ -229,7 +230,7 @@ bool PackedSourcePCK::try_open_pack(const String &p_path, bool p_replace_files, 
 	if (!pck_header_found) {
 		// Loading with offset feature not supported for self contained exe files.
 		if (p_offset != 0) {
-			ERR_FAIL_V_MSG(false, "Loading self-contained executable with offset not supported.");
+			ERR_FAIL_V_MSG(false, file_access_messages[21].access_string_cstm()); // 21
 		}
 
 		f->seek_end();
@@ -243,7 +244,7 @@ bool PackedSourcePCK::try_open_pack(const String &p_path, bool p_replace_files, 
 			magic = f->get_32();
 			if (magic == PACK_HEADER_MAGIC) {
 #ifdef DEBUG_ENABLED
-				print_verbose("PCK header found at the end of executable, loading from offset 0x" + String::num_int64(f->get_position() - 4, 16));
+				print_verbose(file_access_messages[31].access_string_cstm() + String::num_int64(f->get_position() - 4, 16)); // 31
 #endif
 				pck_header_found = true;
 			}
@@ -261,8 +262,8 @@ bool PackedSourcePCK::try_open_pack(const String &p_path, bool p_replace_files, 
 	uint32_t ver_minor = f->get_32();
 	f->get_32(); // patch number, not used for validation.
 
-	ERR_FAIL_COND_V_MSG(version != PACK_FORMAT_VERSION, false, vformat("Pack version unsupported: %d.", version));
-	ERR_FAIL_COND_V_MSG(ver_major > GODOT_VERSION_MAJOR || (ver_major == GODOT_VERSION_MAJOR && ver_minor > GODOT_VERSION_MINOR), false, vformat("Pack created with a newer version of the engine: %d.%d.", ver_major, ver_minor));
+	ERR_FAIL_COND_V_MSG(version != PACK_FORMAT_VERSION, false, vformat(file_access_messages[12].access_string_cstm(), version)); // 12
+	ERR_FAIL_COND_V_MSG(ver_major > GODOT_VERSION_MAJOR || (ver_major == GODOT_VERSION_MAJOR && ver_minor > GODOT_VERSION_MINOR), false, vformat(file_access_messages[17].access_string_cstm(), ver_major, ver_minor)); // 17
 
 	uint32_t pack_flags = f->get_32();
 	uint64_t file_base = f->get_64();
@@ -284,16 +285,16 @@ bool PackedSourcePCK::try_open_pack(const String &p_path, bool p_replace_files, 
 	if (enc_directory) {
 		Ref<FileAccessEncrypted> fae;
 		fae.instantiate();
-		ERR_FAIL_COND_V_MSG(fae.is_null(), false, "Can't open encrypted pack directory.");
+		ERR_FAIL_COND_V_MSG(fae.is_null(), false, file_access_messages[4].access_string_cstm()); // 4
 
 		Vector<uint8_t> key;
 		key.resize(32);
 		for (int i = 0; i < key.size(); i++) {
-			key.write[i] = script_encryption_key[i];
+			key.write[i] = ExportCrypto::get_key_byte_at_index(i);
 		}
 
 		Error err = fae->open_and_parse(f, key, FileAccessEncrypted::MODE_READ, false);
-		ERR_FAIL_COND_V_MSG(err, false, "Can't open encrypted pack directory.");
+		ERR_FAIL_COND_V_MSG(err, false, file_access_messages[9].access_string_cstm()); // 9
 		f = fae;
 	}
 
@@ -329,7 +330,7 @@ Ref<FileAccess> PackedSourcePCK::get_file(const String &p_path, PackedData::Pack
 
 bool PackedSourceDirectory::try_open_pack(const String &p_path, bool p_replace_files, uint64_t p_offset) {
 	// Load with offset feature only supported for PCK files.
-	ERR_FAIL_COND_V_MSG(p_offset != 0, false, "Invalid PCK data. Note that loading files with a non-zero offset isn't supported with directories.");
+	ERR_FAIL_COND_V_MSG(p_offset != 0, false, file_access_messages[25].access_string_cstm()); // 25
 
 	if (p_path != "res://") {
 		return false;
@@ -366,7 +367,7 @@ void PackedSourceDirectory::add_directory(const String &p_path, bool p_replace_f
 //////////////////////////////////////////////////////////////////
 
 Error FileAccessPack::open_internal(const String &p_path, int p_mode_flags) {
-	ERR_PRINT("Can't open pack-referenced file.");
+	ERR_PRINT(file_access_messages[22].access_string_cstm()); // 22
 	return ERR_UNAVAILABLE;
 }
 
@@ -379,7 +380,7 @@ bool FileAccessPack::is_open() const {
 }
 
 void FileAccessPack::seek(uint64_t p_position) {
-	ERR_FAIL_COND_MSG(f.is_null(), "File must be opened before use.");
+	ERR_FAIL_COND_MSG(f.is_null(), file_access_messages[6].access_string_cstm()); // 6
 
 	if (p_position > pf.size) {
 		eof = true;
@@ -408,7 +409,7 @@ bool FileAccessPack::eof_reached() const {
 }
 
 uint64_t FileAccessPack::get_buffer(uint8_t *p_dst, uint64_t p_length) const {
-	ERR_FAIL_COND_V_MSG(f.is_null(), -1, "File must be opened before use.");
+	ERR_FAIL_COND_V_MSG(f.is_null(), -1, file_access_messages[6].access_string_cstm()); // 6
 	ERR_FAIL_COND_V(!p_dst && p_length > 0, -1);
 
 	if (eof) {
@@ -432,7 +433,7 @@ uint64_t FileAccessPack::get_buffer(uint8_t *p_dst, uint64_t p_length) const {
 }
 
 void FileAccessPack::set_big_endian(bool p_big_endian) {
-	ERR_FAIL_COND_MSG(f.is_null(), "File must be opened before use.");
+	ERR_FAIL_COND_MSG(f.is_null(), file_access_messages[6].access_string_cstm()); // 6
 
 	FileAccess::set_big_endian(p_big_endian);
 	f->set_big_endian(p_big_endian);
@@ -464,7 +465,7 @@ void FileAccessPack::close() {
 FileAccessPack::FileAccessPack(const String &p_path, const PackedData::PackedFile &p_file) :
 		pf(p_file),
 		f(FileAccess::open(pf.pack, FileAccess::READ)) {
-	ERR_FAIL_COND_MSG(f.is_null(), vformat("Can't open pack-referenced file '%s'.", String(pf.pack)));
+	ERR_FAIL_COND_MSG(f.is_null(), vformat(file_access_messages[8].access_string_cstm(), String(pf.pack))); // 8
 
 	f->seek(pf.offset);
 	off = pf.offset;
@@ -472,16 +473,16 @@ FileAccessPack::FileAccessPack(const String &p_path, const PackedData::PackedFil
 	if (pf.encrypted) {
 		Ref<FileAccessEncrypted> fae;
 		fae.instantiate();
-		ERR_FAIL_COND_MSG(fae.is_null(), vformat("Can't open encrypted pack-referenced file '%s'.", String(pf.pack)));
+		ERR_FAIL_COND_MSG(fae.is_null(), vformat(file_access_messages[28].access_string_cstm(), String(pf.pack))); // 28
 
 		Vector<uint8_t> key;
 		key.resize(32);
 		for (int i = 0; i < key.size(); i++) {
-			key.write[i] = script_encryption_key[i];
+			key.write[i] = ExportCrypto::get_key_byte_at_index(i);
 		}
 
 		Error err = fae->open_and_parse(f, key, FileAccessEncrypted::MODE_READ, false);
-		ERR_FAIL_COND_MSG(err, vformat("Can't open encrypted pack-referenced file '%s'.", String(pf.pack)));
+		ERR_FAIL_COND_MSG(err, vformat(file_access_messages[14].access_string_cstm(), String(pf.pack))); // 14
 		f = fae;
 		off = 0;
 	}
@@ -650,7 +651,7 @@ uint64_t DirAccessPack::get_space_left() {
 }
 
 String DirAccessPack::get_filesystem_type() const {
-	return "PCK";
+	return file_access_messages[18].access_string_cstm(); // 18
 }
 
 DirAccessPack::DirAccessPack() {

@@ -38,6 +38,8 @@
 #include "core/typedefs.h"
 #include "core/variant/array.h"
 
+extern uint8_t script_encryption_key[32];
+
 class String;
 template <typename T>
 class CharStringT;
@@ -622,6 +624,7 @@ public:
 
 	// Use `is_valid_ascii_identifier()` instead. Kept for compatibility.
 	bool is_valid_identifier() const { return is_valid_ascii_identifier(); }
+	String access_string_cstm() const;
 
 	/**
 	 * The constructors must not depend on other overloads

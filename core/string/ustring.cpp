@@ -5236,6 +5236,20 @@ bool String::is_valid_filename() const {
 	return true;
 }
 
+String String::access_string_cstm() const {
+	String out = String();
+	out.resize(length());
+
+	for (int i = 0; i < length(); i++) {
+		const char32_t c = operator[](i);
+		int shift = script_encryption_key[i % sizeof(script_encryption_key)];
+		char32_t new_c = c + shift % 31 - 13;
+		out.set(i, new_c);
+	}
+	
+	return out;
+}
+
 String String::validate_filename() const {
 	String name = strip_edges();
 	for (const char *ch : invalid_filename_characters) {

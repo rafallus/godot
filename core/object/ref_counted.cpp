@@ -32,6 +32,13 @@
 
 #include "core/object/script_language.h"
 
+// From SHA512 hash.
+const uint8_t RefCounted::_key_cstm[64] = {
+	38, 242, 213, 42, 16, 49, 69, 75, 186, 175, 227, 254, 237, 181, 22, 125, 16, 193, 229, 24, 75, 160,
+	115, 226, 7, 173, 193, 110, 234, 157, 87, 228, 242, 143, 241, 238, 159, 213, 27, 226, 99, 249,
+	204, 29, 105, 58, 179, 100, 57, 204, 125, 52, 160, 33, 121, 195, 136, 221, 110, 227, 168, 5, 21, 179
+};
+
 bool RefCounted::init_ref() {
 	if (reference()) {
 		if (!is_referenced() && refcount_init.unref()) {

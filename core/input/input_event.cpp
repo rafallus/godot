@@ -35,6 +35,13 @@
 #include "core/os/keyboard.h"
 #include "core/os/os.h"
 
+// From SHA512 hash.
+const uint8_t InputEvent::_key_cstm[64] = {
+	110, 149, 122, 10, 213, 8, 239, 208, 179, 209, 135, 4, 44, 191, 144, 165, 138, 157, 150, 88, 41, 130,
+	188, 47, 85, 124, 213, 180, 74, 222, 61, 254, 192, 156, 45, 55, 39, 233, 40, 59, 254, 119, 46, 147,
+	36, 235, 168, 56, 239, 128, 128, 129, 124, 129, 62, 22, 167, 226, 102, 168, 249, 27, 211, 62
+};
+
 void InputEvent::set_device(int p_device) {
 	device = p_device;
 	emit_changed();

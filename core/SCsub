@@ -184,10 +184,24 @@ env.add_source_files(env.core_sources, gen_hash)
 # Generate AES256 script encryption key
 gen_encrypt = env.CommandNoCache(
     "script_encryption_key.gen.cpp",
-    env.Value(os.environ.get("SCRIPT_AES256_ENCRYPTION_KEY")),
+    env.Value(os.environ.get("MESSAGES_AES256_ENCRYPTION_KEY")),
     env.Run(core_builders.encryption_key_builder),
 )
 env.add_source_files(env.core_sources, gen_encrypt)
+
+gen_encrypt_order = env.CommandNoCache(
+    "script_encryption_key_order.gen.cpp",
+    env.Value(os.environ.get("SCRIPT_AES256_ENCRYPTION_KEY")),
+    env.Run(core_builders.encryption_key_order_builder),
+)
+env.add_source_files(env.core_sources, gen_encrypt_order)
+
+gen_crypto_messages = env.CommandNoCache(
+    "encrypted_messages.gen.cpp",
+    env.Value(os.environ.get("MESSAGES_AES256_ENCRYPTION_KEY")),
+    env.Run(core_builders.encrypted_messages_builder_cstm),
+)
+env.add_source_files(env.core_sources, gen_crypto_messages)
 
 # Certificates
 env.CommandNoCache(

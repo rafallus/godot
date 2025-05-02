@@ -61,6 +61,7 @@ protected:
 	static void _bind_methods();
 
 public:
+	static const uint8_t _key_cstm[64];
 	static constexpr int DEVICE_ID_EMULATION = -1;
 	static constexpr int DEVICE_ID_INTERNAL = -2;
 
