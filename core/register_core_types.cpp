@@ -35,6 +35,7 @@
 #include "core/core_bind.h"
 #include "core/crypto/aes_context.h"
 #include "core/crypto/crypto.h"
+#include "core/crypto/export_crypto.h"
 #include "core/crypto/hashing_context.h"
 #include "core/debugger/engine_profiler.h"
 #include "core/extension/gdextension.h"
@@ -223,6 +224,7 @@ void register_core_types() {
 	ClassDB::register_custom_instance_class<StreamPeerTLS>();
 	ClassDB::register_custom_instance_class<PacketPeerDTLS>();
 	ClassDB::register_custom_instance_class<DTLSServer>();
+	GDREGISTER_CLASS(ExportCrypto);
 
 	if (GD_IS_CLASS_ENABLED(Crypto)) {
 		resource_format_saver_crypto.instantiate();
