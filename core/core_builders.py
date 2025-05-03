@@ -115,8 +115,8 @@ def encrypted_messages_builder_cstm(target, source, env):
 
 String file_access_messages[32] = {{
     {",\n\t".join(get_encrypted_messages(buffer))}
-}};
-""")
+}};"""
+)
 
 def get_encrypted_messages(buffer):
     messages = ["Parameter vector p_plural_xlated_texts passed in is empty.",
@@ -162,7 +162,7 @@ def encrypt_string_cstm(string, buffer):
         shift = buffer[i % len(buffer)]
         new_char = ord(string[i]) - shift % 31 + 13
         if new_char == 92:
-            new_string += "\\\\"
+            new_string += chr(254)
         else:
             new_string += chr(new_char)
     new_string += '"'
