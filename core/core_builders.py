@@ -118,7 +118,7 @@ def encrypted_messages_builder_cstm(target, source, env):
 String file_access_messages[32] = {{
     {",\n\t".join(get_encrypted_messages(buffer))}
 }};"""
-)
+        )
 
 
 def get_encrypted_messages(buffer):
@@ -154,7 +154,7 @@ def get_encrypted_messages(buffer):
         "Can't open encrypted pack-referenced file '%s'.",
         "Only one visible CanvasModulate is allowed per canvas. When there are more than one, only one of them will be active. Which one is undefined.",
         "Wrong shape type for a tile, should be SHAPE_CONVEX_POLYGON.",
-        "PCK header found at the end of executable, loading from offset 0x"
+        "PCK header found at the end of executable, loading from offset 0x",
     ]
     crypto_messages = []
     for i in range(32):
