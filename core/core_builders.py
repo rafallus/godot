@@ -70,6 +70,7 @@ uint8_t script_encryption_key[32] = {{
 }};"""
         )
 
+
 def encryption_key_order_builder(target, source, env):
     src = source[0].read() or "0" * 64
     try:
@@ -93,6 +94,7 @@ uint8_t script_encryption_key_order[32] = {{
 	{methods.format_buffer(buffer, 1)}
 }};"""
         )
+
 
 def encrypted_messages_builder_cstm(target, source, env):
     src = source[0].read() or "0" * 64
@@ -118,43 +120,47 @@ String file_access_messages[32] = {{
 }};"""
 )
 
+
 def get_encrypted_messages(buffer):
-    messages = ["Parameter vector p_plural_xlated_texts passed in is empty.",
-    "Failed to load resource '%s'. ResourceFormatLoader::load was not implemented for this resource type.",
-    "PCK header found in executable pck section, loading from offset 0x",
-    "Parse JSON failed. Error at line %d: %s",
-    "Can't open encrypted pack directory.",
-    "Singleton in InputMap already exist.",
-    "File must be opened before use.",
-    "Invalid TextureLayered at index %d.",
-    "Can't open pack-referenced file '%s'.",
-    "Can't open encrypted pack directory.",
-    "Intermediate value of `time_accum` is negative. This could hint at an engine bug or system timer misconfiguration.",
-    "Max pending connections value must be a positive number (0 means refuse new connections).",
-    "Pack version unsupported: %d.",
-    "Loading self-contained executable with offset not supported.",
-    "Can't open encrypted pack-referenced file '%s'.",
-    "The TGA module isn't enabled. Recompile the Godot editor or export template binary with the `module_tga_enabled=yes` SCons option.",
-    "bool RetargetModifier3D::is_rotation_enabled() const {",
-    "Pack created with a newer version of the engine: %d.%d.",
-    "PCK",
-    "WorldBoundaryShape3D doesn't support RigidBody3D in another mode than static.",
-    "Texture dimensions have to be within 1 to 16384 range.",
-    "Loading self-contained executable with offset not supported.",
-    "Can't open pack-referenced file.",
-    "Flatten tree into list, depth first, use stack to avoid recursion.",
-    "Crypto is not available when the mbedtls module is disabled.",
-    "Invalid PCK data. Note that loading files with a non-zero offset isn't supported with directories.",
-    "Render layer number must be between 1 and 20 inclusive.",
-    "The local port number must be between 0 and 65535 (inclusive).",
-    "Can't open encrypted pack-referenced file '%s'.",
-    "Only one visible CanvasModulate is allowed per canvas. When there are more than one, only one of them will be active. Which one is undefined.",
-    "Wrong shape type for a tile, should be SHAPE_CONVEX_POLYGON.",
-    "PCK header found at the end of executable, loading from offset 0x"]
+    messages = [
+        "Parameter vector p_plural_xlated_texts passed in is empty.",
+        "Failed to load resource '%s'. ResourceFormatLoader::load was not implemented for this resource type.",
+        "PCK header found in executable pck section, loading from offset 0x",
+        "Parse JSON failed. Error at line %d: %s",
+        "Can't open encrypted pack directory.",
+        "Singleton in InputMap already exist.",
+        "File must be opened before use.",
+        "Invalid TextureLayered at index %d.",
+        "Can't open pack-referenced file '%s'.",
+        "Can't open encrypted pack directory.",
+        "Intermediate value of `time_accum` is negative. This could hint at an engine bug or system timer misconfiguration.",
+        "Max pending connections value must be a positive number (0 means refuse new connections).",
+        "Pack version unsupported: %d.",
+        "Loading self-contained executable with offset not supported.",
+        "Can't open encrypted pack-referenced file '%s'.",
+        "The TGA module isn't enabled. Recompile the Godot editor or export template binary with the `module_tga_enabled=yes` SCons option.",
+        "bool RetargetModifier3D::is_rotation_enabled() const {",
+        "Pack created with a newer version of the engine: %d.%d.",
+        "PCK",
+        "WorldBoundaryShape3D doesn't support RigidBody3D in another mode than static.",
+        "Texture dimensions have to be within 1 to 16384 range.",
+        "Loading self-contained executable with offset not supported.",
+        "Can't open pack-referenced file.",
+        "Flatten tree into list, depth first, use stack to avoid recursion.",
+        "Crypto is not available when the mbedtls module is disabled.",
+        "Invalid PCK data. Note that loading files with a non-zero offset isn't supported with directories.",
+        "Render layer number must be between 1 and 20 inclusive.",
+        "The local port number must be between 0 and 65535 (inclusive).",
+        "Can't open encrypted pack-referenced file '%s'.",
+        "Only one visible CanvasModulate is allowed per canvas. When there are more than one, only one of them will be active. Which one is undefined.",
+        "Wrong shape type for a tile, should be SHAPE_CONVEX_POLYGON.",
+        "PCK header found at the end of executable, loading from offset 0x"
+    ]
     crypto_messages = []
     for i in range(32):
         crypto_messages.append(encrypt_string_cstm(messages[i], buffer))
     return crypto_messages
+
 
 def encrypt_string_cstm(string, buffer):
     new_string = '"'
@@ -167,7 +173,6 @@ def encrypt_string_cstm(string, buffer):
             new_string += chr(new_char)
     new_string += '"'
     return new_string
-
 
 
 def make_certs_header(target, source, env):
