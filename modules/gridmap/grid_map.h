@@ -30,6 +30,7 @@
 
 #pragma once
 
+#include "modules/gridmap/navgrid.h"
 #include "scene/3d/node_3d.h"
 #include "scene/resources/3d/mesh_library.h"
 #include "scene/resources/multimesh.h"
@@ -174,6 +175,7 @@ class GridMap : public Node3D {
 	bool recreating_octants = false;
 
 	Ref<MeshLibrary> mesh_library;
+	NavGrid *navgrid = nullptr;
 
 	HashMap<OctantKey, Octant *, OctantKey> octant_map;
 	HashMap<IndexKey, Cell, IndexKey> cell_map;

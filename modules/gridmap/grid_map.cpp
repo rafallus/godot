@@ -1033,6 +1033,15 @@ void GridMap::_notification(int p_what) {
 			}
 #endif // defined(DEBUG_ENABLED) && !defined(NAVIGATION_3D_DISABLED)
 			_update_visibility();
+			
+			for (int i = 0; i < get_child_count(); i++) {
+				NavGrid *child = Object::cast_to<NavGrid>(get_child(i));
+				if (child) {
+					navgrid = child;
+					navgrid->set_up_grid(cell_size.x, octant_size, get_global_transform());
+					break;
+				}
+			}
 		} break;
 
 		case NOTIFICATION_TRANSFORM_CHANGED: {
@@ -1048,7 +1057,11 @@ void GridMap::_notification(int p_what) {
 			last_transform = new_xform;
 
 			for (int i = 0; i < baked_meshes.size(); i++) {
-				RS::get_singleton()->instance_set_transform(baked_meshes[i].instance, get_global_transform());
+				RS::get_singleton()->instance_set_transform(baked_meshes[i].instance, new_xform);
+			}
+
+			if (navgrid) {
+				navgrid->set_transform(new_xform);
 			}
 		} break;
 

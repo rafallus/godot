@@ -33,6 +33,7 @@
 #include "register_types.h"
 
 #include "grid_map.h"
+#include "navgrid.h"
 
 #ifdef TOOLS_ENABLED
 #include "editor/grid_map_editor_plugin.h"
@@ -43,6 +44,8 @@
 void initialize_gridmap_module(ModuleInitializationLevel p_level) {
 	if (p_level == MODULE_INITIALIZATION_LEVEL_SCENE) {
 		GDREGISTER_CLASS(GridMap);
+		GDREGISTER_CLASS(NavGrid);
+		// Engine::get_singleton()->add_singleton(Engine::Singleton("PhysicsServer3DManager", PhysicsServer3DManager::get_singleton(), "PhysicsServer3DManager"));
 #ifndef NAVIGATION_3D_DISABLED
 		GridMap::navmesh_parse_init();
 #endif // NAVIGATION_3D_DISABLED
